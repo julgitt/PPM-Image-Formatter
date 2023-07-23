@@ -4,40 +4,74 @@
 #include <math.h>
 
 #define ARGUMENT_COUNT_MISMATCH "Wrong number of arguments"
-#define ARGUMENT_MISMATCH "There is no such instruction. Use one of these:                  \
+#define EXTENSION_MISMATCH "Programs image input must be in PPM extension\n"
+#define ARGUMENT_MISMATCH "There is no such instruction. Use one of:                        \
                             \n-gamma <intensity (value must be between 0 - 1)>              \
                             \n-filter <available filters (rgb) and all theirs combinations> \
                             \n-contrast <intensity (value must be between 0 - 1)>           \
                             \n-blackwhite\n"
-#define PARAMETER_COUNT_MISMATCH "Wrong number of parameters"
-#define EXTENCION_MISMATCH "Programs image input must be in PPM extencion\n"
-#define PARAMETER_MISMATCH(EXPECTED) "Parameter must be a " #EXPECTED
+#define PARAMETER_MISMATCH(EXPECTED) "You must provide a " #EXPECTED
 
-void blackwhite(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+void validateFilterParameters(char *str) {
+    char *ptr = str;
+
+    if (strcmp(ptr, "") == 0)
+        return;
+
+    while ( strcmp(ptr, "") != 0 && strchr("rgb", *ptr) != NULL) {
+        ptr++;
+    }
+
+    if (ptr > str && *ptr == 0)
+        return;
+
+    printf(PARAMETER_MISMATCH(subsequence from (rgb)));
+    exit(1);
+}
+
+double convertStringToDouble(char *str) {
+    // Check if str is in floating point number format
+    int len;
+    double number;
+    int isDouble = sscanf(str, "%lf %n", &number, &len);
+
+    // Check if the number is within the range of 0 to 1
+    if (isDouble == 1 && !str[len] && number >= 0.0 && number <= 1.0)
+        return number;
+
+    printf(PARAMETER_MISMATCH(floating point number in (0 - 1) range));
+    exit(1);
+}
+
+void setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
     int r, g, b;
     int average;
+
     while (size > 0) {
         fscanf(inputFile, "%d %d %d ", &r, &g, &b);
         average = (r + g + b) / 3;
+
         fprintf(outputFile, "%d %d %d ", average, average, average);
         size--;
     }
 }
 
-void filter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+void setFilter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+    validateFilterParameters(parameter);
     int r = 0, g = 0, b = 0;
     int red, green, blue;
     int i = 0;
+
     while (i < strlen(parameter)) {
-        if (parameter[i] == 'r') {
+        if (parameter[i] == 'r')
             r = 1;
-        } else if (parameter[i] == 'g') {
+        else if (parameter[i] == 'g')
             g = 1;
-        } else if (parameter[i] == 'b') {
+        else if (parameter[i] == 'b')
             b = 1;
-        }
         i++;
     }
+
     while (size > 0) {
         fscanf(inputFile, "%d %d %d ", &red, &green, &blue);
         red *= r;
@@ -49,139 +83,95 @@ void filter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
     }
 }
 
-void contrast(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
-    double intencity = atof(parameter);
+void modifyContrast(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+    double intensity = convertStringToDouble(parameter);
     double r, g, b;
-    if (intencity == 0)
-        intencity += 0.05;
-    double factor = intencity * 2;
+
+    if (intensity == 0)
+        intensity += 0.05;
+
+    intensity *= 2;
+
     while (size > 0) {
         fscanf(inputFile, "%lf %lf %lf ", &r, &g, &b);
 
-        r /= 255.0;
-        g /= 255.0;
-        b /= 255.0;
-
-        // Apply contrast adjustment
-        r = (r - 0.5) * factor + 0.5;
-        g = (g - 0.5) * factor + 0.5;
-        b = (b - 0.5) * factor + 0.5;
-
-
-        // Clamp pixel values to the valid range [0, 1]
-        r = fmin(1.0, fmax(0.0, r));
-        g = fmin(1.0, fmax(0.0, g));
-        b = fmin(1.0, fmax(0.0, b));
-
-        // Scale back to the range [0, 255]
-        r *= 255.0;
-        g *= 255.0;
-        b *= 255.0;
+        r = fmax(0.0, fmin(255, (((r / 255) - 0.5) * intensity + 0.5) * 255));
+        g = fmax(0.0, fmin(255, (((g / 255) - 0.5) * intensity + 0.5) * 255));
+        b = fmax(0.0, fmin(255, (((b / 255) - 0.5) * intensity + 0.5) * 255));
 
         fprintf(outputFile, "%d %d %d ", (int) r, (int) g, (int) b);
         size--;
     }
 }
 
-void gamma(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
-    double gammaValue = atof(parameter);
+void modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+    double gammaValue = convertStringToDouble(parameter);
     double r, g, b;
+
     while (size > 0) {
         fscanf(inputFile, "%lf %lf %lf", &r, &g, &b);
-        int red = ((int) (pow(r * 0.001, gammaValue) * 100)) % 256;
-        int green = ((int) (pow(g * 0.001, gammaValue) * 100)) % 256;
-        int blue = ((int) (pow(b * 0.001, gammaValue) * 100)) % 256;
 
-        fprintf(outputFile, "%d %d %d ", red, green, blue);
+        r = (int)fmax(0.0, fmin(255, (r / 255) * (gammaValue + 0.5) * 255));
+        g = (int)fmax(0.0, fmin(255, (g / 255) * (gammaValue + 0.5) * 255));
+        b = (int)fmax(0.0, fmin(255, (b / 255) * (gammaValue + 0.5) * 255));
+
+        fprintf(outputFile, "%d %d %d ", (int) r, (int) g, (int) b);
         size--;
     }
 }
 
-int isStringAValidSequence(char *str) {
-    char *ptr = str;
-    while (strcmp(ptr, "") != 0 && strchr("rgb", *ptr) != NULL)
-        ptr++;
-
-    if (ptr > str && *ptr == 0)
-        return 1;
-    printf(PARAMETER_MISMATCH(sequence from(rgb) set));
-    return 0;
-}
-
-int isStringAValidNumber(char *str) {
-    // Check if str is in floating point number format
-    int len;
-    float number;
-    int isFloat = sscanf(str, "%f %n", &number, &len);
-
-    // Check if the number is within the range of 0 to 1
-    if (isFloat == 1 && !str[len] && number >= 0.0 && number <= 1.0)
-        return 1;
-
-    printf(PARAMETER_MISMATCH(floating point number in(0 - 1) range));
-    return 0;
-}
-
-
 struct {
     char *name;
-
     void (*function)(int, char *, FILE *, FILE *);
-
-    int parameterRequired;
-
-    int (*validation)(char *);
 } functions[] = {
-        {"-blackwhite", &blackwhite, 0, NULL},
-        {"-filter",     &filter,     1, &isStringAValidSequence},
-        {"-contrast",   &contrast,   1, &isStringAValidNumber},
-        {"-gamma",      &gamma,      1, &isStringAValidNumber}
+        {"-blackwhite", &setBlackAndWhite},
+        {"-filter",     &setFilter},
+        {"-contrast",   &modifyContrast},
+        {"-gamma",      &modifyGamma}
 };
 
 
 int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        printf(ARGUMENT_COUNT_MISMATCH);
+        return 1;
+    }
 
-    char extencion[2];
+    char extension[2];
     int width;
     int height;
     int maxDepth;
 
-    if (argc >= 3) {
-        FILE *inputFile = fopen(argv[1], "r");
-        FILE *outputFile = fopen("../output.ppm", "w");
+    FILE *inputFile = fopen(argv[1], "r");
 
-        // extencion
-        fscanf(inputFile, "%2s", extencion);
+    char *outputFileName = argv[1];
+    outputFileName[strlen(outputFileName) - 4] = 0;
+    strcat(outputFileName, "_output.ppm");
 
-        if (strcmp(extencion, "P6") != 0 && strcmp(extencion, "P3") != 0) {
-            printf(EXTENCION_MISMATCH);
-            return 1;
-        }
-        fprintf(outputFile, "%s\n", extencion);
+    FILE *outputFile = fopen(outputFileName, "w");
 
-        // resolution and max depth
-        fscanf(inputFile, "%d %d %d", &width, &height, &maxDepth);
-        fprintf(outputFile, "%d %d\n%d\n", width, height, maxDepth);
-        int size = width * height;
+    // extension
+    fscanf(inputFile, "%2s", extension);
 
-        for (int i = 0; i < 4; i++) {
-            if (strcmp(functions[i].name, argv[2]) == 0) {
-                if (functions[i].parameterRequired == 1) {
-                    if (argc != 4) {
-                        printf(PARAMETER_COUNT_MISMATCH);
-                        return 1;
-                    } else if (functions[i].validation(argv[3]) == 0) {
-                        return 1;
-                    }
-                }
-                functions[i].function(size, functions[i].parameterRequired ? argv[3] : NULL, inputFile, outputFile);
-                return 0;
-            }
-        }
-        printf(ARGUMENT_MISMATCH);
-        return 1;
-    } else {
-        printf(ARGUMENT_COUNT_MISMATCH);
+    if (strcmp(extension, "P6") != 0 && strcmp(extension, "P3") != 0) {
+        printf(EXTENSION_MISMATCH);
         return 1;
     }
+
+    fprintf(outputFile, "%s\n", extension);
+
+    // resolution and max depth
+    fscanf(inputFile, "%d %d %d", &width, &height, &maxDepth);
+    fprintf(outputFile, "%d %d\n%d\n", width, height, maxDepth);
+    int size = width * height;
+
+    for (int i = 0; i < 4; i++) {
+        if (strcmp(functions[i].name, argv[2]) == 0) {
+            functions[i].function(size, (argv[3] == NULL)? "" : argv[3], inputFile, outputFile);
+            return 0;
+        }
+    }
+
+    printf(ARGUMENT_MISMATCH);
+    return 1;
 }
