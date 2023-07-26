@@ -12,21 +12,103 @@
                             \n-blackwhite\n"
 #define PARAMETER_MISMATCH(EXPECTED) "You must provide a " #EXPECTED
 
-void validateFilterParameters(char *str) {
+int isValidExtension(const char* extension);
+void cleanupAndExit(FILE* inputFile, FILE* outputFile, char* outputFileInProgessName,  char* outputFileName, int status);
+
+int modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile);
+int modifyContrast(int size, char *parameter, FILE *inputFile, FILE *outputFile);
+int setFilter(int size, char *parameter, FILE *inputFile, FILE *outputFile);
+int setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFile);
+double convertStringToDouble(char *str);
+int validateFilterParameters(char *str);
+
+struct {
+    char *name;
+    int (*function)(int, char *, FILE *, FILE *);
+} functions[] = {
+        {"-blackwhite", &setBlackAndWhite},
+        {"-filter",     &setFilter},
+        {"-contrast",   &modifyContrast},
+        {"-gamma",      &modifyGamma}
+};
+
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        printf(ARGUMENT_COUNT_MISMATCH);
+        return 1;
+    }
+
+    char extension[2];
+    int width;
+    int height;
+    int maxDepth;
+
+    FILE *inputFile = fopen(argv[1], "r");
+
+    char *outputFileName = argv[1];
+    outputFileName[strlen(outputFileName) - 4] = 0;
+    char *outputFileInProgessName = malloc(sizeof(outputFileName) + 20);
+    strcpy(outputFileInProgessName, outputFileName);
+    strcat(outputFileName, "_output.ppm");
+    strcat(outputFileInProgessName, "_output_in_progress.ppm");
+
+    FILE *outputFile = fopen(outputFileInProgessName, "w");
+
+    // extension
+    fscanf(inputFile, "%2s", extension);
+
+    if (!isValidExtension(extension)) {
+        printf(EXTENSION_MISMATCH);
+        cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
+    }
+
+    fprintf(outputFile, "%s\n", extension);
+
+    // resolution and max depth
+    fscanf(inputFile, "%d %d %d", &width, &height, &maxDepth);
+    fprintf(outputFile, "%d %d\n%d\n", width, height, maxDepth);
+    int size = width * height;
+
+    for (int i = 0; i < 4; i++) {
+        if (strcmp(functions[i].name, argv[2]) == 0) {
+            if (functions[i].function(size, (argv[3] == NULL)? "" : argv[3], inputFile, outputFile))
+                cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
+
+            cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 0);
+        }
+    }
+
+    printf(ARGUMENT_MISMATCH);
+    cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
+}
+
+// functions definitions
+int isValidExtension(const char* extension) {
+    return (strcmp(extension, "P6") == 0 || strcmp(extension, "P3") == 0);
+}
+
+void cleanupAndExit(FILE* inputFile, FILE* outputFile, char* outputFileInProgessName,  char* outputFileName, int status) {
+    fclose(inputFile);
+    fclose(outputFile);
+    (status)? remove(outputFileInProgessName) : rename(outputFileInProgessName, outputFileName);
+    exit(status);
+}
+
+int validateFilterParameters(char *str) {
     char *ptr = str;
 
     if (strcmp(ptr, "") == 0)
-        return;
+        return 0;
 
     while ( strcmp(ptr, "") != 0 && strchr("rgb", *ptr) != NULL) {
         ptr++;
     }
 
     if (ptr > str && *ptr == 0)
-        return;
+        return 0;
 
     printf(PARAMETER_MISMATCH(subsequence from (rgb)));
-    exit(1);
+    return -1;
 }
 
 double convertStringToDouble(char *str) {
@@ -40,10 +122,10 @@ double convertStringToDouble(char *str) {
         return number;
 
     printf(PARAMETER_MISMATCH(floating point number in (0 - 1) range));
-    exit(1);
+    return -1;
 }
 
-void setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+int setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
     int r, g, b;
     int average;
 
@@ -54,10 +136,11 @@ void setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFi
         fprintf(outputFile, "%d %d %d ", average, average, average);
         size--;
     }
+    return 0;
 }
 
-void setFilter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
-    validateFilterParameters(parameter);
+int setFilter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+    if (validateFilterParameters(parameter) == -1) return 1;
     int r = 0, g = 0, b = 0;
     int red, green, blue;
     int i = 0;
@@ -81,31 +164,35 @@ void setFilter(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
         fprintf(outputFile, "%d %d %d ", red, green, blue);
         size--;
     }
+    return 0;
 }
 
-void modifyContrast(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
-    double intensity = convertStringToDouble(parameter);
+int modifyContrast(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+    double contrastValue = convertStringToDouble(parameter);
+    if (contrastValue == -1) return 1;
     double r, g, b;
 
-    if (intensity == 0)
-        intensity += 0.05;
+    if (contrastValue == 0)
+        contrastValue += 0.05;
 
-    intensity *= 2;
+    contrastValue *= 2;
 
     while (size > 0) {
         fscanf(inputFile, "%lf %lf %lf ", &r, &g, &b);
 
-        r = fmax(0.0, fmin(255, (((r / 255) - 0.5) * intensity + 0.5) * 255));
-        g = fmax(0.0, fmin(255, (((g / 255) - 0.5) * intensity + 0.5) * 255));
-        b = fmax(0.0, fmin(255, (((b / 255) - 0.5) * intensity + 0.5) * 255));
+        r = fmax(0.0, fmin(255, (((r / 255) - 0.5) * contrastValue + 0.5) * 255));
+        g = fmax(0.0, fmin(255, (((g / 255) - 0.5) * contrastValue + 0.5) * 255));
+        b = fmax(0.0, fmin(255, (((b / 255) - 0.5) * contrastValue + 0.5) * 255));
 
         fprintf(outputFile, "%d %d %d ", (int) r, (int) g, (int) b);
         size--;
     }
+    return 0;
 }
 
-void modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
+int modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
     double gammaValue = convertStringToDouble(parameter);
+    if (gammaValue == -1) return 1;
     double r, g, b;
 
     while (size > 0) {
@@ -118,60 +205,5 @@ void modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile) {
         fprintf(outputFile, "%d %d %d ", (int) r, (int) g, (int) b);
         size--;
     }
-}
-
-struct {
-    char *name;
-    void (*function)(int, char *, FILE *, FILE *);
-} functions[] = {
-        {"-blackwhite", &setBlackAndWhite},
-        {"-filter",     &setFilter},
-        {"-contrast",   &modifyContrast},
-        {"-gamma",      &modifyGamma}
-};
-
-
-int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        printf(ARGUMENT_COUNT_MISMATCH);
-        return 1;
-    }
-
-    char extension[2];
-    int width;
-    int height;
-    int maxDepth;
-
-    FILE *inputFile = fopen(argv[1], "r");
-
-    char *outputFileName = argv[1];
-    outputFileName[strlen(outputFileName) - 4] = 0;
-    strcat(outputFileName, "_output.ppm");
-
-    FILE *outputFile = fopen(outputFileName, "w");
-
-    // extension
-    fscanf(inputFile, "%2s", extension);
-
-    if (strcmp(extension, "P6") != 0 && strcmp(extension, "P3") != 0) {
-        printf(EXTENSION_MISMATCH);
-        return 1;
-    }
-
-    fprintf(outputFile, "%s\n", extension);
-
-    // resolution and max depth
-    fscanf(inputFile, "%d %d %d", &width, &height, &maxDepth);
-    fprintf(outputFile, "%d %d\n%d\n", width, height, maxDepth);
-    int size = width * height;
-
-    for (int i = 0; i < 4; i++) {
-        if (strcmp(functions[i].name, argv[2]) == 0) {
-            functions[i].function(size, (argv[3] == NULL)? "" : argv[3], inputFile, outputFile);
-            return 0;
-        }
-    }
-
-    printf(ARGUMENT_MISMATCH);
-    return 1;
+    return 0;
 }
