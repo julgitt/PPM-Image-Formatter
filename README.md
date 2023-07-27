@@ -1,4 +1,4 @@
-#### PPM IMAGE FORMATTER
+## PPM IMAGE FORMATTER
 A simple C program that allows you to modify images in .ppm (for now only p3) extension.
 
 Run the program in the terminal with one of the parameters:
