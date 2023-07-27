@@ -3,7 +3,8 @@
 #include <string.h>
 #include <math.h>
 
-#define ARGUMENT_COUNT_MISMATCH "Wrong number of arguments"
+// Messages macros
+#define ARGUMENT_COUNT_MISMATCH "Wrong number of arguments\n"
 #define EXTENSION_MISMATCH "Programs image input must be in PPM extension\n"
 #define ARGUMENT_MISMATCH "There is no such instruction. Use one of:                        \
                             \n-gamma <intensity (value must be between 0 - 1)>              \
@@ -11,9 +12,16 @@
                             \n-contrast <intensity (value must be between 0 - 1)>           \
                             \n-blackwhite\n"
 #define PARAMETER_MISMATCH(EXPECTED) "You must provide a " #EXPECTED
+#define SUCCESS "Successfully finished\n"
 
+// Functions declarations
 int isValidExtension(const char* extension);
-void cleanupAndExit(FILE* inputFile, FILE* outputFile, char* outputFileInProgessName,  char* outputFileName, int status);
+void cleanupAndExit(FILE* inputFile,
+                    FILE* outputFile,
+                    char* outputFileInProgessName,
+                    char* outputFileName,
+                    char* message,
+                    int status);
 
 int modifyGamma(int size, char *parameter, FILE *inputFile, FILE *outputFile);
 int modifyContrast(int size, char *parameter, FILE *inputFile, FILE *outputFile);
@@ -22,6 +30,7 @@ int setBlackAndWhite(int size, char *parameter, FILE *inputFile, FILE *outputFil
 double convertStringToDouble(char *str);
 int validateFilterParameters(char *str);
 
+// function to name mapping
 struct {
     char *name;
     int (*function)(int, char *, FILE *, FILE *);
@@ -43,6 +52,7 @@ int main(int argc, char *argv[]) {
     int height;
     int maxDepth;
 
+    // files set up
     FILE *inputFile = fopen(argv[1], "r");
 
     char *outputFileName = argv[1];
@@ -54,13 +64,17 @@ int main(int argc, char *argv[]) {
 
     FILE *outputFile = fopen(outputFileInProgessName, "w");
 
-    // extension
+    // extension validation
     fscanf(inputFile, "%2s", extension);
 
-    if (!isValidExtension(extension)) {
-        printf(EXTENSION_MISMATCH);
-        cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
-    }
+    if (!isValidExtension(extension))
+        cleanupAndExit(inputFile,
+                       outputFile,
+                       outputFileInProgessName,
+                       outputFileName,
+                       EXTENSION_MISMATCH,
+                       1);
+
 
     fprintf(outputFile, "%s\n", extension);
 
@@ -69,17 +83,19 @@ int main(int argc, char *argv[]) {
     fprintf(outputFile, "%d %d\n%d\n", width, height, maxDepth);
     int size = width * height;
 
+    // search and run function
     for (int i = 0; i < 4; i++) {
-        if (strcmp(functions[i].name, argv[2]) == 0) {
-            if (functions[i].function(size, (argv[3] == NULL)? "" : argv[3], inputFile, outputFile))
-                cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
+        if (strcmp(functions[i].name, argv[2]) == 0)
+                cleanupAndExit(inputFile,
+                               outputFile,
+                               outputFileInProgessName,
+                               outputFileName,
+                               SUCCESS,
+                               functions[i].function(size, (argv[3] == NULL)? "" : argv[3], inputFile, outputFile));
 
-            cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 0);
-        }
     }
 
-    printf(ARGUMENT_MISMATCH);
-    cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, 1);
+    cleanupAndExit(inputFile, outputFile, outputFileInProgessName, outputFileName, ARGUMENT_MISMATCH, 1);
 }
 
 // functions definitions
@@ -87,10 +103,17 @@ int isValidExtension(const char* extension) {
     return (strcmp(extension, "P6") == 0 || strcmp(extension, "P3") == 0);
 }
 
-void cleanupAndExit(FILE* inputFile, FILE* outputFile, char* outputFileInProgessName,  char* outputFileName, int status) {
+void cleanupAndExit(FILE* inputFile, FILE* outputFile, char* outputFileInProgessName,
+                    char* outputFileName, char* message, int status) {
     fclose(inputFile);
     fclose(outputFile);
-    (status)? remove(outputFileInProgessName) : rename(outputFileInProgessName, outputFileName);
+    if (status)
+        remove(outputFileInProgessName);
+    else {
+        remove(outputFileName);
+        rename(outputFileInProgessName, outputFileName);
+    }
+    printf("%s", message);
     exit(status);
 }
 
@@ -107,7 +130,7 @@ int validateFilterParameters(char *str) {
     if (ptr > str && *ptr == 0)
         return 0;
 
-    printf(PARAMETER_MISMATCH(subsequence from (rgb)));
+    printf(PARAMETER_MISMATCH(subsequence from (rgb).));
     return -1;
 }
 
@@ -121,7 +144,7 @@ double convertStringToDouble(char *str) {
     if (isDouble == 1 && !str[len] && number >= 0.0 && number <= 1.0)
         return number;
 
-    printf(PARAMETER_MISMATCH(floating point number in (0 - 1) range));
+    printf(PARAMETER_MISMATCH(floating point number in (0 - 1) range.));
     return -1;
 }
 
